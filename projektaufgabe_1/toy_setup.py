@@ -47,10 +47,74 @@ def toy_setup():
 
                 cur.executemany("INSERT INTO V_toy VALUES (%s, %s, %s)", data_v)
                 print("[SETUP] Populated table V_toy")
+
                 # --- Teil c ---
-                # TODO: Implement part c
+                cur.execute("""
+                CREATE OR REPLACE VIEW h2v_toy AS
+                select
+                    o.oid,
+                    a1.val AS a1,
+                    a2.val AS a2,
+                    a3.val::INT AS a3
+                from
+                    (select DISTINCT oid from V_toy) o
+                left join
+                    (select oid, val from V_toy where key='a1') a1
+                    ON o.oid = a1.oid
+                left join
+                    (select oid, val from V_toy where key='a2') a2
+                    ON o.oid = a2.oid
+                left join
+                    (select oid, val from V_toy where key='a3') a3
+                    ON o.oid = a3.oid
+                order by oid asc;
+                """)
+                print("[SETUP] Created view h2v_toy")
+
                 # --- Teil d ---
-                # TODO: Implement part d
+                cur.execute("DROP TABLE IF EXISTS V_toy_str CASCADE;")
+                cur.execute("""
+                CREATE TABLE V_toy_str (
+                    oid INT,
+                    key TEXT,
+                    val TEXT
+                );
+                """)
+
+                cur.execute("DROP TABLE IF EXISTS V_toy_int CASCADE;")
+                cur.execute("""
+                CREATE TABLE V_toy_int (
+                    oid INT,
+                    key TEXT,
+                    val INT
+                );
+                """)
+
+                cur.execute("""
+                INSERT INTO V_toy_str
+                select oid, key, val
+                from V_toy
+                where key IN ('a1','a2') or key is null;
+                """)
+
+                cur.execute("""
+                INSERT INTO V_toy_int
+                select oid, key, val::INT
+                from V_toy
+                where key='a3';
+                """)
+
+                cur.execute("""
+                CREATE OR REPLACE VIEW V_toy_all AS
+                select oid, key, val::TEXT AS val
+                from V_toy_str
+                union all
+                select oid, key, val::TEXT
+                from V_toy_int
+                order by oid asc;
+                """)
+
+                print("[SETUP] Created partitions and view V_toy_all")
 
     except Exception as e:
         print(f"Error: {e}")
