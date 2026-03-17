@@ -47,9 +47,14 @@ def toy_setup():
 
                 cur.executemany("INSERT INTO V_toy VALUES (%s, %s, %s)", data_v)
                 print("[SETUP] Populated table V_toy")
+                # --- Teil c ---
+                # TODO: Implement part c
+                # --- Teil d ---
+                # TODO: Implement part d
 
     except Exception as e:
         print(f"Error: {e}")
+    print("[SETUP] Completed toy_setup!")
 
 if __name__ == "__main__":
     toy_setup()
