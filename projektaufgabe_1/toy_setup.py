@@ -14,12 +14,14 @@ def get_conn_str():
     )
 
 def toy_setup():
+    print("[SETUP] Starting toy_setup...")
     try:
         with psycopg.connect(get_conn_str()) as conn:
             with conn.cursor() as cur:
+                # --- Teil a ---
                 cur.execute("DROP TABLE IF EXISTS H_toy CASCADE;")
                 cur.execute("CREATE TABLE H_toy (oid INT, a1 TEXT, a2 TEXT, a3 INT);")
-                print("Created table H_toy")
+                print("[SETUP] Created table H_toy")
 
                 data_h = [
                     (1, 'a', 'b', None),
@@ -29,7 +31,22 @@ def toy_setup():
                 ]
 
                 cur.executemany("INSERT INTO H_toy VALUES (%s, %s, %s, %s)", data_h)
-                print("Populated table H_toy")
+                print("[SETUP] Populated table H_toy")
+
+                # --- Teil b ---
+                cur.execute("DROP TABLE IF EXISTS V_toy CASCADE;")
+                cur.execute("CREATE TABLE V_toy (oid INT, key TEXT, val TEXT);")
+                print("[SETUP] Created table V_toy")
+
+                data_v = [
+                    (1, 'a1', 'a'), (1, 'a2', 'b'),
+                    (2, 'a2', 'c'), (2, 'a3', '2'),
+                    (3, 'a3', '3'),
+                    (4, None, None)
+                ]
+
+                cur.executemany("INSERT INTO V_toy VALUES (%s, %s, %s)", data_v)
+                print("[SETUP] Populated table V_toy")
 
     except Exception as e:
         print(f"Error: {e}")
