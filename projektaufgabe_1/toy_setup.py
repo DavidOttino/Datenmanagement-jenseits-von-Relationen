@@ -119,7 +119,7 @@ def toy_setup():
                 print("[SETUP] Created partitions and view V_toy_all")
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"[SETUP] Error: {e}")
     print("[SETUP] Completed toy_setup!")
 
 def generate(num_tuples: int, sparsity: float, num_attributes: int):
@@ -127,16 +127,13 @@ def generate(num_tuples: int, sparsity: float, num_attributes: int):
     
     # most possible attributes in Postgres is 1.600
     if num_attributes > 1599:
-        print("[GENERATE] Unable to generate H with more than 1.600 attributes!")
+        print("[GENERATE] Error: Unable to generate H with more than 1.600 attributes!")
         return
     
     try:
         with psycopg.connect(get_conn_str()) as conn:
             with conn.cursor() as cur:
-                # delete old data
                 cur.execute("DROP TABLE IF EXISTS H CASCADE;")
-
-                # generate attributes
                 columns = ["oid INTEGER"]
                 for i in range(num_attributes):
                     if i % 2 == 0:
@@ -147,40 +144,32 @@ def generate(num_tuples: int, sparsity: float, num_attributes: int):
 
                 cur.execute(f"CREATE TABLE H ({columns_sql});")
 
-                # generate value pools
-                attr_values = []
+                print(f"[GENERATE] Preparing {num_attributes} independent value pools...")
+                unique_per_col = (num_tuples // 5) + 1
+                all_pools = []
                 for i in range(num_attributes):
-                    pool = []
-                    max_unique_values = (num_tuples // 5) + 1
-                    # Ints
                     if i % 2 == 0:
-                        values = list(range(1, max_unique_values + 1))
-                        for v in values:
-                            pool.extend([v]*5)
-                    # Strings
+                        pool = list(range(1, unique_per_col + 1)) * 5
                     else:
-                        values = [''.join(random.choices(string.ascii_uppercase, k=3)) for _ in range(max_unique_values)]
-                        for v in values:
-                            pool.extend([v]*5)
+                        pool = [''.join(random.choices(string.ascii_uppercase, k=3)) for _ in range(unique_per_col)] * 5
+                    
                     random.shuffle(pool)
-                    attr_values.append(pool[:num_tuples])
+                    all_pools.append(iter(pool))
+                
+                print(f"[GENERATE] Streaming {num_tuples} rows to Postgres...")
+                with cur.copy("COPY H FROM STDIN") as copy:
+                    for t in range(num_tuples):
+                        row = [t]
+                        for i in range(num_attributes):
+                            if random.random() < sparsity:
+                                row.append(None)
+                                next(all_pools[i]) 
+                                continue
+                            row.append(next(all_pools[i]))
+                        
+                        copy.write_row(row)
 
-                # insert values from pools, add null values according to sparsity
-                for t in range(num_tuples):
-                    row = [str(t)]
-                    for a in range(num_attributes):
-                        if random.random() < sparsity:
-                            row.append('NULL')
-                        else:
-                            val = attr_values[a].pop()
-                            if isinstance(val, str):
-                                row.append(f"'{val}'")
-                            else:
-                                row.append(str(val))
-                    row_sql = ", ".join(row)
-                    cur.execute(f"INSERT INTO H VALUES ({row_sql});")
-
-                # create views for checking the data
+                print(f"[GENERATE] Generating views...")
                 cur.execute("""
                 CREATE OR REPLACE VIEW view_sparsity AS
                 select
@@ -204,4 +193,4 @@ def generate(num_tuples: int, sparsity: float, num_attributes: int):
 
 if __name__ == "__main__":
     toy_setup()
-    generate(10000, 0.2, 100)
+    generate(100000, 0.2, 1599)
