@@ -1,33 +1,21 @@
 import psycopg
 import string
-from toy_setup import get_conn_str
+from setup import get_conn_str
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def h2v(relation: str):
+def h2v(relation: str = "H"):
+    v_int = f"{relation}_V_INT"
+    v_text = f"{relation}_V_TEXT"
     print(f"[H2V] Converting relation \"{relation}\" to vertical format...")
     try:
         with psycopg.connect(get_conn_str()) as conn:
             with conn.cursor() as cur:
-                cur.execute("DROP TABLE IF EXISTS V_INT;")
-                cur.execute("DROP TABLE IF EXISTS V_TEXT;")
+                cur.execute(f"CREATE TABLE IF NOT EXISTS {v_int} (oid INTEGER, key TEXT, val INTEGER);")
+                cur.execute(f"CREATE TABLE IF NOT EXISTS {v_text} (oid INTEGER, key TEXT, val TEXT);")
 
-                # create new tables
-                cur.execute("""
-                    CREATE TABLE V_INT (
-                        oid INTEGER,
-                        key TEXT,
-                        val INTEGER
-                    );
-                """)
-                cur.execute("""
-                    CREATE TABLE V_TEXT (
-                        oid INTEGER,
-                        key TEXT,
-                        val TEXT
-                    );
-                """)
+                cur.execute(f"TRUNCATE TABLE {v_int}, {v_text};")
 
                 # read catalogue
                 cur.execute("""
@@ -64,20 +52,20 @@ def h2v(relation: str):
                         """)
 
                 if int_inserts:
-                    sql_int = "INSERT INTO V_INT " + " UNION ALL ".join(int_inserts) + ";"
+                    sql_int = f"INSERT INTO {v_int} " + " UNION ALL ".join(int_inserts) + ";"
                     cur.execute(sql_int)
 
                 if text_inserts:
-                    sql_text = "INSERT INTO V_TEXT " + " UNION ALL ".join(text_inserts) + ";"
+                    sql_text = f"INSERT INTO {v_text} " + " UNION ALL ".join(text_inserts) + ";"
                     cur.execute(sql_text)
 
                 conn.commit()
 
-                print(f"[H2V] Successfully created V_INT and V_TEXT from \"{relation}\".")
+                print(f"[H2V] Successfully created {v_int} and {v_text} from \"{relation}\".")
 
     except Exception as e:
         print(f"[H2V] Error: {e}")
 
 
 if __name__ == "__main__":
-    h2v("H")
+    h2v()
