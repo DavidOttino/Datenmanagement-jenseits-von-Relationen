@@ -192,5 +192,5 @@ def generate(num_tuples: int, sparsity: float, num_attributes: int):
         print(f"Error: {e}")
 
 if __name__ == "__main__":
-    toy_setup()
-    generate(100000, 0.2, 1599)
+    #toy_setup()
+    generate(10000, 0.2, 100)
