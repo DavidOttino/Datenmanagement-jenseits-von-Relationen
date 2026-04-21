@@ -8,48 +8,50 @@ class queryAPI:
     def close(self):
         self.conn.close()
 
-    def setup_functions(self):
+    def setup_functions(self, num_attributes, relation):
+        attr_list = [f"attr{i}" for i in range(1, num_attributes + 1)]
+        v_int = f"{relation}_V_INT"
+        v_text = f"{relation}_V_TEXT"
+
+        returns_columns = ", ".join([f"{a} TEXT" for a in attr_list])
+
+        select_parts = []
+        for a in attr_list:
+            part = f"""
+            COALESCE(
+                (SELECT val::TEXT FROM {v_int} WHERE oid = p_oid AND key = '{a}'),
+                (SELECT val FROM {v_text} WHERE oid = p_oid AND key = '{a}')
+            )"""
+            select_parts.append(part)
+
+        q_i_sql = f"""
+        CREATE OR REPLACE FUNCTION q_i(p_oid INT)
+        RETURNS TABLE (oid INT, {returns_columns}) AS $$
+        BEGIN
+            RETURN QUERY
+            SELECT 
+                p_oid,
+                {", ".join(select_parts)};
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+
+        q_ii_sql = f"""
+        CREATE OR REPLACE FUNCTION q_ii(p_key TEXT, p_val INT)
+        RETURNS TABLE (oid INT) AS $$
+        BEGIN
+            RETURN QUERY
+            SELECT v.oid FROM {v_int} v
+            WHERE v.key = p_key AND v.val = p_val;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+
         with self.conn.cursor() as cur:
-            # Query i: SELECT * WHERE oid = ?
-            cur.execute("""
-            CREATE OR REPLACE FUNCTION q_i(p_oid INT)
-            RETURNS TABLE (
-                key TEXT,
-                val TEXT
-            ) AS $$
-            BEGIN
-                RETURN QUERY
-                SELECT key, val::TEXT
-                FROM H_V_TEXT
-                WHERE oid = p_oid
-
-                UNION ALL
-
-                SELECT key, val::TEXT
-                FROM H_V_INT
-                WHERE oid = p_oid;
-            END;
-            $$ LANGUAGE plpgsql;
-            """)
-
-            # Query ii: SELECT oid WHERE ai = ?
-            cur.execute("""
-            CREATE OR REPLACE FUNCTION q_ii(p_key TEXT, p_val INT)
-            RETURNS TABLE (
-                oid INT
-            ) AS $$
-            BEGIN
-                RETURN QUERY
-                SELECT oid
-                FROM H_V_INT
-                WHERE key = p_key AND val = p_val;
-            END;
-            $$ LANGUAGE plpgsql;
-            """)
-
+            cur.execute(q_i_sql)
+            cur.execute(q_ii_sql)
         self.conn.commit()
-        print("[API] Functions created.")
-
+        print(f"[API] Functions created for {num_attributes} attributes.")
 
     def q_i(self, oid: int):
         with self.conn.cursor() as cur:
