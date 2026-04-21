@@ -24,7 +24,7 @@ NUMERIC_FIELDS = {
 
 COLORS = ("#1b9e77", "#7570b3", "#d95f02", "#e7298a")
 WIDTH = 1400
-HEIGHT = 1260
+HEIGHT = 2060
 PADDING = 48
 
 
@@ -34,10 +34,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "input_csv",
-        nargs="?",
+        nargs="*",
         type=Path,
-        default=DEFAULT_INPUT,
-        help=f"CSV file to read. Defaults to {DEFAULT_INPUT}",
+        default=[DEFAULT_INPUT],
+        help=f"CSV file(s) to read. Defaults to {DEFAULT_INPUT}",
     )
     parser.add_argument(
         "-o",
@@ -49,7 +49,20 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def read_results(path: Path) -> list[dict]:
+def infer_backend(path: Path, row: dict) -> str:
+    backend = row.get("vertical_backend", "").strip()
+    if backend:
+        return backend
+
+    filename = path.stem.lower()
+    if "api" in filename:
+        return "api"
+    if "proxy" in filename:
+        return "proxy"
+    return "proxy"
+
+
+def read_result_file(path: Path) -> list[dict]:
     if not path.exists():
         raise FileNotFoundError(f"Result CSV not found: {path}")
 
@@ -58,15 +71,27 @@ def read_results(path: Path) -> list[dict]:
         rows = []
 
         for row in reader:
-            rows.append(
-                {
-                    field: converter(row[field])
-                    for field, converter in NUMERIC_FIELDS.items()
-                }
-            )
+            parsed_row = {
+                field: converter(row[field])
+                for field, converter in NUMERIC_FIELDS.items()
+            }
+            parsed_row["vertical_backend"] = infer_backend(path, row)
+            rows.append(parsed_row)
 
     if not rows:
         raise ValueError(f"Result CSV is empty: {path}")
+
+    return rows
+
+
+def read_results(paths: list[Path]) -> list[dict]:
+    rows = []
+
+    for path in paths:
+        rows.extend(read_result_file(path))
+
+    if not rows:
+        raise ValueError("No benchmark rows found.")
 
     return rows
 
@@ -151,10 +176,23 @@ def line_chart(
     elements = []
     x_values = sorted(grouped)
     series_values = [
-        [transform(grouped[x_value][y_field]) for x_value in x_values]
+        [
+            transform(grouped[x_value][y_field])
+            if y_field in grouped[x_value]
+            else None
+            for x_value in x_values
+        ]
         for y_field in y_fields
     ]
-    all_y_values = [value for values in series_values for value in values]
+    all_y_values = [
+        value
+        for values in series_values
+        for value in values
+        if value is not None
+    ]
+
+    if not all_y_values:
+        raise ValueError(f"Cannot render chart without values: {title}")
 
     if y_scale == "log":
         positive_values = [value for value in all_y_values if value > 0]
@@ -238,15 +276,29 @@ def line_chart(
         color = COLORS[series_index % len(COLORS)]
         points = []
 
+        current_segment = []
+
         for x_value, y_value in zip(x_values, values):
+            if y_value is None:
+                if len(current_segment) > 1:
+                    elements.append(
+                        f'<polyline fill="none" stroke="{color}" stroke-width="3" '
+                        f'points="{" ".join(current_segment)}"/>'
+                    )
+                current_segment = []
+                continue
+
             point_x = scale(x_value, min(x_values), max(x_values), plot_left, plot_right)
             point_y = y_position(y_value)
-            points.append(f"{point_x:.1f},{point_y:.1f}")
+            point = f"{point_x:.1f},{point_y:.1f}"
+            points.append(point)
+            current_segment.append(point)
 
-        elements.append(
-            f'<polyline fill="none" stroke="{color}" stroke-width="3" '
-            f'points="{" ".join(points)}"/>'
-        )
+        if len(current_segment) > 1:
+            elements.append(
+                f'<polyline fill="none" stroke="{color}" stroke-width="3" '
+                f'points="{" ".join(current_segment)}"/>'
+            )
 
         for point in points:
             point_x, point_y = point.split(",")
@@ -339,14 +391,78 @@ def qps_by_dimension_chart(
     )
 
 
+def available_backends(rows: list[dict]) -> list[str]:
+    preferred_order = {"proxy": 0, "api": 1}
+    return sorted(
+        {row["vertical_backend"] for row in rows},
+        key=lambda backend: (preferred_order.get(backend, 99), backend),
+    )
+
+
+def vertical_backend_qps_by_dimension(
+    rows: list[dict],
+    x_field: str,
+) -> tuple[dict, tuple[str, ...], tuple[str, ...]]:
+    grouped_values = defaultdict(lambda: defaultdict(list))
+
+    for row in rows:
+        backend = row["vertical_backend"]
+        grouped_values[row[x_field]][f"{backend}_v_oid"].append(row["qps_v_oid_lookup"])
+        grouped_values[row[x_field]][f"{backend}_v_value"].append(row["qps_v_value_lookup"])
+
+    grouped = {
+        x_value: {
+            field: average(values)
+            for field, values in fields.items()
+        }
+        for x_value, fields in grouped_values.items()
+    }
+
+    fields = []
+    labels = []
+    for backend in available_backends(rows):
+        fields.extend((f"{backend}_v_oid", f"{backend}_v_value"))
+        labels.extend((f"{backend} V oid", f"{backend} V value"))
+
+    return grouped, tuple(fields), tuple(labels)
+
+
+def vertical_backend_comparison_chart(
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    rows: list[dict],
+    x_field: str,
+    title: str,
+    y_scale: str = "linear",
+) -> list[str]:
+    grouped, fields, labels = vertical_backend_qps_by_dimension(rows, x_field)
+    return line_chart(
+        x,
+        y,
+        width,
+        height,
+        grouped,
+        fields,
+        labels,
+        f"{title} ({y_scale.title()})",
+        "Vertical queries per second",
+        x_field.replace("_", " ").title(),
+        y_scale=y_scale,
+    )
+
+
 def create_dashboard(rows: list[dict], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     chart_width = (WIDTH - PADDING * 3) / 2
-    chart_height = (HEIGHT - PADDING * 4 - 36) / 3
+    chart_height = (HEIGHT - PADDING * 6 - 36) / 5
     row_1 = PADDING + 36
     row_2 = row_1 + chart_height + PADDING
     row_3 = row_2 + chart_height + PADDING
+    row_4 = row_3 + chart_height + PADDING
+    row_5 = row_4 + chart_height + PADDING
     left = PADDING
     right = PADDING * 2 + chart_width
 
@@ -455,6 +571,58 @@ def create_dashboard(rows: list[dict], output_path: Path) -> None:
             rows,
             "num_tuples",
             "Average Query Throughput by Tuple Count",
+            y_scale="linear",
+        )
+    )
+
+    elements.extend(
+        vertical_backend_comparison_chart(
+            left,
+            row_4,
+            chart_width,
+            chart_height,
+            rows,
+            "sparsity",
+            "Vertical Backend Throughput by Sparsity",
+            y_scale="log",
+        )
+    )
+
+    elements.extend(
+        vertical_backend_comparison_chart(
+            right,
+            row_4,
+            chart_width,
+            chart_height,
+            rows,
+            "num_tuples",
+            "Vertical Backend Throughput by Tuple Count",
+            y_scale="log",
+        )
+    )
+
+    elements.extend(
+        vertical_backend_comparison_chart(
+            left,
+            row_5,
+            chart_width,
+            chart_height,
+            rows,
+            "sparsity",
+            "Vertical Backend Throughput by Sparsity",
+            y_scale="linear",
+        )
+    )
+
+    elements.extend(
+        vertical_backend_comparison_chart(
+            right,
+            row_5,
+            chart_width,
+            chart_height,
+            rows,
+            "num_tuples",
+            "Vertical Backend Throughput by Tuple Count",
             y_scale="linear",
         )
     )
