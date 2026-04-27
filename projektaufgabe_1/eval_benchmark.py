@@ -25,11 +25,7 @@ NUMERIC_FIELDS = {
 
 COLORS = ("#1b9e77", "#7570b3", "#d95f02", "#e7298a")
 WIDTH = 1400
-<<<<<<< Updated upstream
-HEIGHT = 1260
-=======
 HEIGHT = 2460
->>>>>>> Stashed changes
 PADDING = 48
 PLOT_COUNT = 11
 
@@ -40,10 +36,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "input_csv",
-        nargs="?",
+        nargs="*",
         type=Path,
-        default=DEFAULT_INPUT,
-        help=f"CSV file to read. Defaults to {DEFAULT_INPUT}",
+        default=[DEFAULT_INPUT],
+        help=f"CSV file(s) to read. Defaults to {DEFAULT_INPUT}",
     )
     parser.add_argument(
         "-o",
@@ -66,7 +62,20 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def read_results(path: Path) -> list[dict]:
+def infer_backend(path: Path, row: dict) -> str:
+    backend = row.get("vertical_backend", "").strip()
+    if backend:
+        return backend
+
+    filename = path.stem.lower()
+    if "api" in filename:
+        return "api"
+    if "proxy" in filename:
+        return "proxy"
+    return "proxy"
+
+
+def read_result_file(path: Path) -> list[dict]:
     if not path.exists():
         raise FileNotFoundError(f"Result CSV not found: {path}")
 
@@ -75,15 +84,27 @@ def read_results(path: Path) -> list[dict]:
         rows = []
 
         for row in reader:
-            rows.append(
-                {
-                    field: converter(row[field])
-                    for field, converter in NUMERIC_FIELDS.items()
-                }
-            )
+            parsed_row = {
+                field: converter(row[field])
+                for field, converter in NUMERIC_FIELDS.items()
+            }
+            parsed_row["vertical_backend"] = infer_backend(path, row)
+            rows.append(parsed_row)
 
     if not rows:
         raise ValueError(f"Result CSV is empty: {path}")
+
+    return rows
+
+
+def read_results(paths: list[Path]) -> list[dict]:
+    rows = []
+
+    for path in paths:
+        rows.extend(read_result_file(path))
+
+    if not rows:
+        raise ValueError("No benchmark rows found.")
 
     return rows
 
@@ -168,10 +189,23 @@ def line_chart(
     elements = []
     x_values = sorted(grouped)
     series_values = [
-        [transform(grouped[x_value][y_field]) for x_value in x_values]
+        [
+            transform(grouped[x_value][y_field])
+            if y_field in grouped[x_value]
+            else None
+            for x_value in x_values
+        ]
         for y_field in y_fields
     ]
-    all_y_values = [value for values in series_values for value in values]
+    all_y_values = [
+        value
+        for values in series_values
+        for value in values
+        if value is not None
+    ]
+
+    if not all_y_values:
+        raise ValueError(f"Cannot render chart without values: {title}")
 
     if y_scale == "log":
         positive_values = [value for value in all_y_values if value > 0]
@@ -255,15 +289,29 @@ def line_chart(
         color = COLORS[series_index % len(COLORS)]
         points = []
 
+        current_segment = []
+
         for x_value, y_value in zip(x_values, values):
+            if y_value is None:
+                if len(current_segment) > 1:
+                    elements.append(
+                        f'<polyline fill="none" stroke="{color}" stroke-width="3" '
+                        f'points="{" ".join(current_segment)}"/>'
+                    )
+                current_segment = []
+                continue
+
             point_x = scale(x_value, min(x_values), max(x_values), plot_left, plot_right)
             point_y = y_position(y_value)
-            points.append(f"{point_x:.1f},{point_y:.1f}")
+            point = f"{point_x:.1f},{point_y:.1f}"
+            points.append(point)
+            current_segment.append(point)
 
-        elements.append(
-            f'<polyline fill="none" stroke="{color}" stroke-width="3" '
-            f'points="{" ".join(points)}"/>'
-        )
+        if len(current_segment) > 1:
+            elements.append(
+                f'<polyline fill="none" stroke="{color}" stroke-width="3" '
+                f'points="{" ".join(current_segment)}"/>'
+            )
 
         for point in points:
             point_x, point_y = point.split(",")
@@ -551,18 +599,6 @@ def qps_by_dimension_chart(
     )
 
 
-<<<<<<< Updated upstream
-def create_dashboard(rows: list[dict], output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    chart_width = (WIDTH - PADDING * 3) / 2
-    chart_height = (HEIGHT - PADDING * 4 - 36) / 3
-    row_1 = PADDING + 36
-    row_2 = row_1 + chart_height + PADDING
-    row_3 = row_2 + chart_height + PADDING
-    left = PADDING
-    right = PADDING * 2 + chart_width
-=======
 def available_backends(rows: list[dict]) -> list[str]:
     preferred_order = {"proxy": 0, "api": 1}
     return sorted(
@@ -629,7 +665,6 @@ def plot_filename(title: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
     return f"{slug}.svg"
 
->>>>>>> Stashed changes
 
 def svg_document(width: float, height: float, elements: list[str]) -> str:
     return "\n".join(
@@ -816,10 +851,6 @@ def build_plot_elements(
     if len(positions) != len(plot_builders):
         raise ValueError("Expected one position for each benchmark plot.")
 
-<<<<<<< Updated upstream
-    elements.append("</svg>")
-    output_path.write_text("\n".join(elements), encoding="utf-8")
-=======
     return [
         (title, build_plot(*position))
         for (title, build_plot), position in zip(plot_builders, positions)
@@ -871,7 +902,6 @@ def create_individual_plots(rows: list[dict], output_dir: Path) -> list[Path]:
         paths.append(path)
 
     return paths
->>>>>>> Stashed changes
 
 
 def main() -> None:
