@@ -2,6 +2,7 @@ import csv
 import random
 import time
 from dataclasses import dataclass
+from datetime import datetime
 
 import psycopg
 from dotenv import load_dotenv
@@ -14,6 +15,8 @@ from v2h import v2h
 load_dotenv()
 
 
+# The benchmark grid values can be one value, e.g. 4_000,
+# or multiple values, e.g. (2_000, 4_000, 8_000).
 DATASET_SIZES = (2_000, 4_000, 8_000)
 ATTRIBUTE_COUNTS = (5, 10, 15)
 SPARSITY_VALUES = tuple(1 - (2 ** -i) for i in range(2, 6))
@@ -24,13 +27,36 @@ BASE_RELATION = "H"
 
 @dataclass(frozen=True)
 class BenchmarkConfig:
-    dataset_sizes: tuple[int, ...] = DATASET_SIZES
-    attribute_counts: tuple[int, ...] = ATTRIBUTE_COUNTS
-    sparsity_values: tuple[float, ...] = SPARSITY_VALUES
+    dataset_sizes: int | tuple[int, ...] = DATASET_SIZES
+    attribute_counts: int | tuple[int, ...] = ATTRIBUTE_COUNTS
+    sparsity_values: float | tuple[float, ...] = SPARSITY_VALUES
     duration_seconds: int = BENCHMARK_SECONDS
     random_seed: int = RANDOM_SEED
     relation: str = BASE_RELATION
+<<<<<<< Updated upstream
     output_csv: str = "projektaufgabe_1/benchmark_results.csv"
+=======
+    output_csv: str = OUTPUT_CSV
+    vertical_backend: str = "proxy"
+
+    def __post_init__(self):
+        object.__setattr__(self, "dataset_sizes", tuple_config(self.dataset_sizes))
+        object.__setattr__(self, "attribute_counts", tuple_config(self.attribute_counts))
+        object.__setattr__(self, "sparsity_values", tuple_config(self.sparsity_values))
+
+        if self.vertical_backend not in VERTICAL_BACKENDS:
+            supported = ", ".join(VERTICAL_BACKENDS)
+            raise ValueError(
+                f"Unsupported vertical_backend {self.vertical_backend!r}. "
+                f"Use one of: {supported}"
+            )
+>>>>>>> Stashed changes
+
+
+def tuple_config(value):
+    if isinstance(value, tuple):
+        return value
+    return (value,)
 
 
 def attribute_names(num_attributes: int) -> list[str]:
@@ -204,7 +230,33 @@ def prepare_vertical_representation(relation: str) -> None:
     v2h(relation)
 
 
+<<<<<<< Updated upstream
+=======
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run horizontal vs. vertical benchmarks.")
+    backend_group = parser.add_mutually_exclusive_group()
+    backend_group.add_argument(
+        "--vertical-backend",
+        choices=VERTICAL_BACKENDS,
+        default="proxy",
+        help="Vertical query execution path to benchmark. Defaults to proxy.",
+    )
+    backend_group.add_argument(
+        "--api-only",
+        action="store_true",
+        help="Run the benchmark with the query API as the vertical backend.",
+    )
+    parser.add_argument(
+        "--output-csv",
+        default=OUTPUT_CSV,
+        help="CSV file to write benchmark results to.",
+    )
+    return parser.parse_args()
+
+
+>>>>>>> Stashed changes
 def run_benchmark(config: BenchmarkConfig = BenchmarkConfig()) -> list[dict]:
+    print(f"[BENCHMARK] Started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     rng = random.Random(config.random_seed)
     results = []
 
@@ -256,9 +308,21 @@ def run_benchmark(config: BenchmarkConfig = BenchmarkConfig()) -> list[dict]:
                         )
 
     write_results_csv(results, config.output_csv)
+    print(f"[BENCHMARK] Finished at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"[BENCHMARK] Wrote {len(results)} benchmark rows to {config.output_csv}")
     return results
 
 
 if __name__ == "__main__":
+<<<<<<< Updated upstream
     run_benchmark()
+=======
+    args = parse_args()
+    vertical_backend = "api" if args.api_only else args.vertical_backend
+    run_benchmark(
+        BenchmarkConfig(
+            output_csv=args.output_csv,
+            vertical_backend=vertical_backend,
+        )
+    )
+>>>>>>> Stashed changes
