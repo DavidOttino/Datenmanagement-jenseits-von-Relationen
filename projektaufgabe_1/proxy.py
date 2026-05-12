@@ -80,7 +80,7 @@ def _upsert_vertical(cur, v_int, v_text, oid, key, val):
         cur.execute(f"INSERT INTO {v_text} (oid, key, val) VALUES (%s, %s, %s)", (oid, key, val))
 
 if __name__ == "__main__":
-    #print(execute("SELECT * FROM H WHERE oid = 0"))
+    print(execute("SELECT oid, attr1, attr2 FROM H WHERE attr2 = 'NHN' OR attr1 = 11"))
     #print(execute("INSERT INTO H (oid, attr1, attr2) VALUES (101, 100, 'Initial')"))
     #print(execute("UPDATE H SET attr1 = '999' WHERE oid = 101;"))
-    print(execute("DELETE FROM H WHERE oid = 101;"))
+    #print(execute("DELETE FROM H WHERE oid = 101;"))
