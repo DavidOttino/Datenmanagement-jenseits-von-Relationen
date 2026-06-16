@@ -1,0 +1,243 @@
+\documentclass[11pt]{scrartcl}
+
+\usepackage[top=1.5cm]{geometry}
+\usepackage{url}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+
+\setlength{\parindent}{0em}
+\setlength{\parskip}{0.5em}
+
+\renewcommand{\thesubsection}{\arabic{subsection}}
+
+\lstdefinestyle{dmrsql}{
+  language=SQL,
+  basicstyle=\small\ttfamily,
+  keywordstyle=\color{magenta!75!black},
+  stringstyle=\color{green!50!black},
+  showspaces=false,
+  showstringspaces=false,
+  commentstyle=\color{gray}}
+
+\lstdefinestyle{dmrPython}{
+  language=Python,
+  basicstyle=\small\ttfamily,
+  keywordstyle=\color{magenta!75!black},
+  stringstyle=\color{green!50!black},
+  showspaces=false,
+  showstringspaces=false,
+  commentstyle=\color{gray}}
+
+\title{
+  \textbf{\large Projektaufgabe 3 } \\
+  Phase 1 -- Das EDGE Modell (4 P) \\
+  {\large Datenmanagement jenseits von Relationen}
+}
+
+\author{
+  TODO: Gruppen Nummer \\
+  \large TODO: Lastname1 Firstname1, StudentID1 \\
+  \large TODO: Lastname2 Firstname2, StudentID2
+}
+
+\begin{document}
+
+\maketitle\thispagestyle{empty}
+
+Dieses Reporting Template dient der Vorbereitung der Abgabe von Phase 1.
+
+\subsection*{EDGE Modell Import des Toy Beispiels (1 Punkte)}
+
+Beschreiben Sie kurz, welches Verfahren (inkl. Programmiersprache) Sie fuer den Import verwenden. Gab es Probleme beim Implementieren des Parsers? (0.5 P).
+
+Der Import wurde in Python 3 umgesetzt. Das Toy-Beispiel wird mit \texttt{xml.etree.ElementTree} geparst und danach in eine eigene Baumstruktur \texttt{EdgeNode} ueberfuehrt. In diesem Schritt wird die im Aufgabenblatt geforderte Transformation ausgefuehrt: Die Wurzel bleibt \texttt{bib}; darunter werden die Publikationen zuerst nach Venue und danach nach Jahr gruppiert. Dadurch entsteht die Struktur
+\[
+\texttt{bib} \rightarrow \texttt{venue} \rightarrow \texttt{year} \rightarrow \texttt{publication} \rightarrow \texttt{fields}.
+\]
+
+Die Venue wird aus dem \texttt{key}-Attribut der DBLP-Publikation abgeleitet. Die Prefixe \texttt{journals/pvldb/} und \texttt{conf/vldb/} werden als \texttt{vldb} interpretiert, \texttt{journals/pacmmod/} und \texttt{conf/sigmod/} als \texttt{sigmod}, und \texttt{conf/icde/} als \texttt{icde}. Das Jahr wird aus dem Kindknoten \texttt{year} gelesen. Die Attribute \texttt{mdate} und \texttt{orcid} werden gemaess Aufgabenstellung ignoriert.
+
+Ein praktisches Problem waren HTML/XML-Entities im DBLP-Ausschnitt, z.B. \texttt{\&uuml;} und \texttt{\&auml;}. Vor dem Parsen werden deshalb bekannte benannte Entities ueber die Python-Standardbibliothek \texttt{html.entities} auf Unicode-Zeichen abgebildet. Die XML-Standardentities wie \texttt{\&amp;} bleiben dabei erhalten.
+
+Zeigen Sie (z.B. mittels Screenshot des Konsolenoutputs), dass Ihr Parser alle Elemente (und deren Inhalt) des Toy-Beispiels korrekt erkennt. (0.5 P).
+
+Der Parser kann mit folgendem Befehl ausgefuehrt werden:
+
+\begin{lstlisting}[style=dmrPython]
+python .\projektaufgabe_3\phase1_demo.py
+\end{lstlisting}
+
+Der Konsolenoutput zeigt die transformierte Baumstruktur. Ein Ausschnitt ist:
+
+\begin{lstlisting}
+0: s_id=bib, type=bib, content=NULL
+  1: s_id=vldb, type=venue, content=NULL
+    2: s_id=vldb_2023, type=year, content=NULL
+      3: s_id=SchmittKAMM23, type=article, content=NULL
+        4: s_id=NULL, type=author, content=Daniel Ulrich Schmitt
+        5: s_id=NULL, type=author, content=Daniel Kocher
+        6: s_id=NULL, type=author, content=Nikolaus Augsten
+        9: s_id=NULL, type=title,
+           content=A Two-Level Signature Scheme for Stable Set Similarity Joins.
+      18: s_id=SchalerHS23, type=article, content=NULL
+        19: s_id=NULL, type=author, content=Christine Schaeler
+  31: s_id=sigmod, type=venue, content=NULL
+    32: s_id=sigmod_2022, type=year, content=NULL
+      33: s_id=HutterAK0L22, type=inproceedings, content=NULL
+    46: s_id=sigmod_2023, type=year, content=NULL
+      47: s_id=ThielKAHMS23, type=article, content=NULL
+\end{lstlisting}
+
+Der vollstaendige Output enthaelt alle vier Publikationen des Toy-Beispiels mit ihren Feldknoten, z.B. \texttt{author}, \texttt{title}, \texttt{pages}, \texttt{year}, \texttt{journal}, \texttt{ee} und \texttt{url}.
+
+Geben Sie die Definition Ihrer Tabellen im Edge Modell an. Zeigen Sie (einen Ausschnitt) des Toy Beispiels nach dem Import als Edge Model in die DB (1 P).
+
+Wir interpretieren das EDGE Modell als zwei Relationen. Die Relation \texttt{node} speichert alle Knoten des transformierten XML-Baums. \texttt{id} ist der technische Knotenschluessel, \texttt{s\_id} ist ein semantischer Bezeichner fuer Wurzel, Venue-, Year- und Publikationsknoten, \texttt{type} enthaelt den Knotentyp, und \texttt{content} enthaelt den Textinhalt von Blattknoten. Die Relation \texttt{edge} speichert gerichtete Eltern-Kind-Kanten.
+
+\begin{lstlisting}[style=dmrsql]
+CREATE TABLE IF NOT EXISTS node (
+    id INT PRIMARY KEY,
+    s_id TEXT,
+    type TEXT NOT NULL,
+    content TEXT
+);
+
+CREATE TABLE IF NOT EXISTS edge (
+    from_id INT NOT NULL REFERENCES node(id),
+    to_id INT NOT NULL REFERENCES node(id),
+    PRIMARY KEY (from_id, to_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_node_s_id ON node(s_id);
+CREATE INDEX IF NOT EXISTS idx_node_type ON node(type);
+CREATE INDEX IF NOT EXISTS idx_node_content ON node(content);
+CREATE INDEX IF NOT EXISTS idx_edge_from ON edge(from_id);
+CREATE INDEX IF NOT EXISTS idx_edge_to ON edge(to_id);
+\end{lstlisting}
+
+Nach dem Import des Toy-Beispiels enthaelt die Datenbank 62 Tupel in \texttt{node} und 61 Tupel in \texttt{edge}. Ein Ausschnitt der Relation \texttt{node} ist:
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{rlll}
+    \toprule
+    id & s\_id & type & content \\
+    \midrule
+    0 & bib & bib & NULL \\
+    1 & vldb & venue & NULL \\
+    2 & vldb\_2023 & year & NULL \\
+    3 & SchmittKAMM23 & article & NULL \\
+    4 & NULL & author & Daniel Ulrich Schmitt \\
+    5 & NULL & author & Daniel Kocher \\
+    6 & NULL & author & Nikolaus Augsten \\
+    9 & NULL & title & A Two-Level Signature Scheme \ldots \\
+    18 & SchalerHS23 & article & NULL \\
+    31 & sigmod & venue & NULL \\
+    32 & sigmod\_2022 & year & NULL \\
+    33 & HutterAK0L22 & inproceedings & NULL \\
+    46 & sigmod\_2023 & year & NULL \\
+    47 & ThielKAHMS23 & article & NULL \\
+    \bottomrule
+  \end{tabular}
+  \caption{Ausschnitt der Relation \texttt{node} nach Import des Toy-Beispiels}
+\end{table}
+
+Ein Ausschnitt der Relation \texttt{edge} ist:
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{rr}
+    \toprule
+    from\_id & to\_id \\
+    \midrule
+    0 & 1 \\
+    1 & 2 \\
+    2 & 3 \\
+    3 & 4 \\
+    3 & 5 \\
+    3 & 6 \\
+    2 & 18 \\
+    0 & 31 \\
+    31 & 32 \\
+    32 & 33 \\
+    31 & 46 \\
+    46 & 47 \\
+    \bottomrule
+  \end{tabular}
+  \caption{Ausschnitt der Relation \texttt{edge} nach Import des Toy-Beispiels}
+\end{table}
+
+\subsection*{Berechnung der XPath Achsen im EDGE Modell (2 Punkte)}
+
+Die vier XPath-Achsen werden auf dem EDGE Modell berechnet. Die rekursiven Achsen \texttt{ancestor} und \texttt{descendant} werden in SQL mit \texttt{WITH RECURSIVE} und Joins ueber die Relation \texttt{edge} berechnet. Die Achsen \texttt{following-sibling} und \texttt{preceding-sibling} werden berechnet, indem zuerst der gemeinsame Elternknoten ueber \texttt{edge} bestimmt wird und danach die Geschwister mit groesserer bzw. kleinerer ID ausgegeben werden.
+
+Geben Sie fuer jede der geforderten Achsen, die Knotenmenge des Ergebnisses, sowie die Anzahl der Ergebnisknoten aus.
+
+\begin{table}[h]
+	\centering
+		\begin{center}
+			\begin{tabular}{ l | c c }
+				\toprule
+				Achse & Ergebnisknoten ID's & Ergebnisgroesse\\
+				\midrule
+				ancestor & 0, 1, 2, 3 & 4 \\
+				descendants & 3--30 & 28 \\
+				following SchmittKAMM23 & 18 & 1 \\
+				preceeding SchmittKAMM23 & $\emptyset$ & 0 \\
+				following SchalerHS23 & $\emptyset$ & 0 \\
+				preceeding SchalerHS23 & 3 & 1 \\
+				\bottomrule
+			\end{tabular}
+			\end{center}
+	\caption{Ergebnisse der XPath-Berechnug}
+	\label{tab:ErgebnisseDerXPathBerechnug}
+\end{table}
+
+Die Ergebnisse stammen aus folgendem Setup-Lauf:
+
+\begin{lstlisting}
+[DB] Saved EDGE model:
+node rows: 62
+edge rows: 61
+
+[AXES] Toy correctness checks:
+ancestor("Daniel Ulrich Schmitt")
+  id=0, s_id=bib, type=bib, content=None
+  id=1, s_id=vldb, type=venue, content=None
+  id=2, s_id=vldb_2023, type=year, content=None
+  id=3, s_id=SchmittKAMM23, type=article, content=None
+
+descendant(vldb_2023)
+  id=3, s_id=SchmittKAMM23, type=article, content=None
+  ...
+  id=30, s_id=None, type=url,
+     content=db/journals/pvldb/pvldb16.html#SchalerHS23
+
+following-sibling(SchmittKAMM23)
+  id=18, s_id=SchalerHS23, type=article, content=None
+preceding-sibling(SchmittKAMM23)
+  <empty>
+following-sibling(SchalerHS23)
+  <empty>
+preceding-sibling(SchalerHS23)
+  id=3, s_id=SchmittKAMM23, type=article, content=None
+\end{lstlisting}
+
+Sofern Sie Annahmen zum Aufbau der Daten getroffen haben, geben Sie diese nachfolgend an:
+\begin{itemize}
+	\item Die Venue-Zuordnung erfolgt ueber das \texttt{key}-Attribut der DBLP-Publikation.
+	\item Jede importierte Publikation besitzt genau einen \texttt{year}-Kindknoten, der fuer die Gruppierung verwendet wird.
+	\item Die IDs werden nach der Transformation in Preorder-Reihenfolge des EDGE-Baums vergeben. Dadurch entsprechen kleinere IDs bei Geschwistern der vorherigen Dokument-/Baumreihenfolge.
+	\item XML-Attribute werden nicht als eigene EDGE-Knoten gespeichert. Die laut Aufgabenstellung ignorierbaren Attribute \texttt{mdate} und \texttt{orcid} werden daher verworfen.
+	\item Die Achsenberechnung findet in der Datenbank statt; Python dient nur als Controller fuer die SQL-Anfragen.
+\end{itemize}
+
+\subsection*{Zeitmamagement}
+
+Benoetigte Zeit pro Person (nur Phase 1): \textbf{TODO}
+
+
+\end{document}
