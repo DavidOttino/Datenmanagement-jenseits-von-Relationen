@@ -46,7 +46,6 @@ def create_sparse_tables(A, B):
 
 def create_functions(conn):
     with conn.cursor() as cur:
-        # 1. Die langsame SQL-Variante (Ansatz 2a)
         cur.execute("""
             CREATE OR REPLACE FUNCTION dot_product_sql(vec1 DOUBLE PRECISION[], vec2 DOUBLE PRECISION[]) 
             RETURNS DOUBLE PRECISION AS $$
@@ -55,7 +54,6 @@ def create_functions(conn):
             $$ LANGUAGE SQL;
         """)
 
-        # 2. Die schnelle C-Variante (Ansatz 2b - Bonus)
         cur.execute("""
             CREATE OR REPLACE FUNCTION dot_product_c(DOUBLE PRECISION[], DOUBLE PRECISION[])
             RETURNS DOUBLE PRECISION
