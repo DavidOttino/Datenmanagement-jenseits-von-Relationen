@@ -16,7 +16,8 @@ def create_xpath_accelerator_tables(conn) -> None:
                 pre INT PRIMARY KEY,
                 post INT NOT NULL,
                 parent INT,
-                node_id INT NOT NULL
+                node_id INT NOT NULL,
+                height INT NOT NULL
             );
             """
         )
@@ -60,24 +61,30 @@ def annotate_tree(root: EdgeNode) -> tuple[list[tuple], list[tuple], list[tuple]
     pre_counter = 0
     post_counter = 0
 
-    def dfs(node: EdgeNode, parent_pre: int | None) -> int:
+    def dfs(node: EdgeNode, parent_pre: int | None) -> tuple[int, int]:
         nonlocal pre_counter, post_counter
         
         current_pre = pre_counter
         pre_counter += 1
         
+        # Phase 3: Höhe des Baumes berechnen
+        max_child_height = -1
         for child in node.children:
-            dfs(child, current_pre)
+            child_pre, child_height = dfs(child, current_pre)
+            max_child_height = max(max_child_height, child_height)
             
         current_post = post_counter
         post_counter += 1
+
+        # Phase 3: Höhe berechnen: Blatt = 0, Innere = max(Kinderhöhen) + 1
+        height = max_child_height + 1
         
-        accel_rows.append((current_pre, current_post, parent_pre, node.id))
+        accel_rows.append((current_pre, current_post, parent_pre, node.id, height))
         content_rows.append((node.id, node.type, node.content))
         if node.s_id is not None:
             attribute_rows.append((node.id, "s_id", node.s_id))
             
-        return current_post
+        return current_pre, height
 
     print("[ANNOTATION] Starte Pre-/Post-Order Berechnung via DFS...")
     dfs(root, parent_pre=None)
@@ -91,8 +98,8 @@ def save_accelerator_data(conn, accel_rows, content_rows, attribute_rows) -> Non
     with conn.cursor() as cur:
         cur.executemany(
             """
-            INSERT INTO accel (pre, post, parent, node_id)
-            VALUES (%s, %s, %s, %s);
+            INSERT INTO accel (pre, post, parent, node_id, height)
+            VALUES (%s, %s, %s, %s, %s);
             """,
             accel_rows
         )
