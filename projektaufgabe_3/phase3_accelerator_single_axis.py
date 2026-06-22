@@ -33,30 +33,6 @@ class SingleAxisAnnotation:
 
 
 def annotate_tree_single_axis(root: EdgeNode) -> dict[int, SingleAxisAnnotation]:
-    """
-    Berechnet pre_min und pre_max für jeden Knoten.
-    
-    Algorithmus:
-    - Ein globaler Counter wird hochgezählt (nicht zwei wie bei pre/post)
-    - Bei Eintritt in Knoten: pre_min = counter++
-    - Bei Austritt aus Knoten: pre_max = counter++
-    
-    Beispiel:
-    ```
-    bib (pre_min=0, pre_max=1)
-      vldb (pre_min=1, pre_max=2)
-        vldb_2023 (pre_min=2, pre_max=3)
-          article (pre_min=3, pre_max=4)
-            author (pre_min=4, pre_max=5)
-    ```
-    
-    Für descendant(vldb_2023 mit pre_min=2, pre_max=3):
-    - article: pre_min=3, pre_max=4
-      ✓ 2 < 3 < 3? NEIN! aber
-      ✓ 2 < 4 < 3? NEIN!
-    
-    Wait, das funktioniert nicht. Lass mich korrigieren...
-    """
     annotations = {}
     counter = 0
     
@@ -103,11 +79,10 @@ def create_single_axis_accelerator_tables(conn) -> None:
         cur.execute(
             """
             CREATE TABLE accel_single (
-                pre_min INT,
-                pre_max INT,
+                pre_min INT PRIMARY KEY,
+                pre_max INT NOT NULL,
                 parent INT,
-                node_id INT PRIMARY KEY,
-                PRIMARY KEY (pre_min, pre_max)
+                node_id INT NOT NULL
             );
             """
         )

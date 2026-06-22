@@ -1,0 +1,184 @@
+\documentclass[11pt]{scrartcl}
+
+\usepackage[top=1.5cm]{geometry}
+\usepackage{url}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{makecell}
+
+\setlength{\parindent}{0em}
+\setlength{\parskip}{0.5em}
+
+\newcommand{\youranswerhere}{[Your answer goes here \ldots]}
+\renewcommand{\thesubsection}{\arabic{subsection}}
+
+\lstdefinestyle{dmrsql}{
+  language=SQL,
+  basicstyle=\small\ttfamily,
+  keywordstyle=\color{magenta!75!black},
+  stringstyle=\color{green!50!black},
+  showspaces=false,
+  showstringspaces=false,
+  commentstyle=\color{gray}}
+
+\lstdefinestyle{dmrJava}{
+  language=JAVA,
+  basicstyle=\small\ttfamily,
+  keywordstyle=\color{magenta!75!black},
+  stringstyle=\color{green!50!black},
+  showspaces=false,
+  showstringspaces=false,
+  commentstyle=\color{gray}}
+
+\title{
+  \textbf{\large Projektaufgabe 3 } \\
+  Phase 3 – Implementierung des XPath Accelerators (3.5 P) \\
+  {\large Datenmanagement jenseits von Relationen}
+}
+
+\author{
+  Gruppen Nummer 12 \\
+  \large Zanotti Christian, 12528509 \\
+  \large Wiesinger Martin, 11935667 \\
+  \large Ottino David, 51841010 
+}
+
+\begin{document}
+
+\maketitle\thispagestyle{empty}
+
+Dieses Reporting Template dient der Vorbereitung der Abgabe von Phase 3. 
+
+\subsection*{Verkleinern der Fensteranfrage (0.5 P)}
+
+Zeigen Sie, dass die Berechnung der Achsen für die Beispiele aus Phase 1 hier die gleichen Ergebnisse erzeugen:
+
+\begin{table}[h]
+	\centering
+		\begin{center}
+			\begin{tabular}{ l | c c }
+				\toprule
+				Achse & Ergebnisknoten ID's & Ergebnisgröße\\
+				\midrule
+				ancestor & 0, 1, 2 & 3 \\ 
+				descendants &
+\makecell[l]{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, \\
+16, 17, 18, 19, 20, 21, 22, 23, 24, 25, \\
+26, 27, 28, 29, 30}
+& 28 \\  
+				following SchmittKAMM23& 18 & 1 \\  
+				preceeding SchmittKAMM23 & - & 0 \\ 
+				following SchalerHS23& - & 0 \\  
+				preceeding SchalerHS23& 3 & 1 \\ 
+				\bottomrule
+			\end{tabular}
+			\end{center}
+	\caption{Ergebnisse der XPath-Berechnung auf Edge Modell aus Phase 1}
+	\label{tab:ErgebnisseDerXPathBerechnug}
+\end{table}
+
+\begin{table}[h]
+	\centering
+		\begin{center}
+			\begin{tabular}{ l | c c }
+				\toprule
+				Achse & Ergebnisknoten ID's & Ergebnisgröße\\
+				\midrule
+				ancestor & 0, 1, 2 & 3 \\ 
+				descendants &
+\makecell[l]{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, \\
+16, 17, 18, 19, 20, 21, 22, 23, 24, 25, \\
+26, 27, 28, 29, 30}
+& 28 \\  
+				following SchmittKAMM23& 18 & 1 \\  
+				preceeding SchmittKAMM23 & - & 0 \\ 
+				following SchalerHS23& - & 0 \\  
+				preceeding SchalerHS23& 3 & 1 \\ 
+				\bottomrule
+			\end{tabular}
+			\end{center}
+	\caption{Ergebnisse der XPath-Berechnung des XPath-Accelerators aus Phase 3 mit Verkleinerung des Fensters}
+	\label{tab:ErgebnisseDerXPathBerechnug}
+\end{table}
+
+
+
+\subsection*{Schemaerstellung (1 Punkt).}
+Geben Sie die Create Table statements aller von Ihnen angelegten Tabellen an:
+\begin{lstlisting}[style=dmrsql]
+[CREATE TABLE accel_single (
+                pre_min INT PRIMARY KEY,
+                pre_max INT NOT NULL,
+                parent INT,
+                node_id INT NOT NULL
+            );
+
+CREATE TABLE content (
+                node_id INT PRIMARY KEY,
+                tag TEXT NOT NULL,
+                text TEXT
+            );
+
+CREATE TABLE attribute (
+                node_id INT NOT NULL,
+                name TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (node_id, name)
+            );
+
+CREATE INDEX idx_accel_single_pre_min ON accel_single(pre_min);
+
+CREATE INDEX idx_accel_single_pre_max ON accel_single(pre_max);
+
+CREATE INDEX idx_accel_single_parent ON accel_single(parent);
+
+CREATE INDEX idx_content_tag ON content(tag);
+
+CREATE TABLE accel (
+                pre INT PRIMARY KEY,
+                post INT NOT NULL,
+                parent INT,
+                node_id INT NOT NULL,
+                height INT NOT NULL
+            )]
+\end{lstlisting}
+
+\subsection*{Zugriff mit nur einer Achse (1 Punkt).}
+Zeigen Sie, dass die Berechnung der Achsen für die Beispiele aus Phase 1 hier die gleichen Ergebnisse erzeugen:
+
+\begin{table}[h]
+	\centering
+		\begin{center}
+			\begin{tabular}{ l | c c }
+				\toprule
+				Achse & Ergebnisknoten ID's & Ergebnisgröße\\
+				\midrule
+				Phase 1 &\makecell[l]{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, \\
+16, 17, 18, 19, 20, 21, 22, 23, 24, 25, \\
+26, 27, 28, 29, 30}
+& 28 \\  
+Phase 3 &\makecell[l]{3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, \\
+16, 17, 18, 19, 20, 21, 22, 23, 24, 25, \\
+26, 27, 28, 29, 30}
+& 28 \\ 
+				\bottomrule
+			\end{tabular}
+			\end{center}
+	\caption{Ergebnisse der XPath-Berechnung des XPath-Accelerators aus Phase 3 mit nur einer Achse}
+	\label{tab:ErgebnisseDerXPathBerechnug}
+\end{table}
+
+Da sich die Knoten IDs unterscheiden, zeigen Sie für einige Knoten die jeweilige Identität.
+
+Die Knoten-Ids sind in unserer Implementierung identisch, da in beiden Phasen der gleiche Tree verwendet wird und somit die gleichen IDs vergeben werden.
+
+
+\subsection*{Zeitmamagement}
+
+Benötigte Zeit pro Person (nur Phase 3): \textbf{5}
+
+
+\end{document}
