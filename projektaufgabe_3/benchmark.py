@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import io
+import math
 import random
 import statistics
 import xml.etree.ElementTree as ET
@@ -30,14 +31,15 @@ from phase3_accelerator_single_axis import (
 from phase3_single_axis import descendant_single_axis
 
 
-DEFAULT_FACTORS = (1, 2, 4, 8)
-DEFAULT_REPEATS = 1
+DEFAULT_FACTORS = (1, 1)
+DEFAULT_REPEATS = 5
 DEFAULT_SEED = 26
 
 
 def main() -> None:
 	dataset_factors = normalize_factors(list(DEFAULT_FACTORS))
 	base_path = Path(__file__).with_name("my_small_bib.xml")
+	rng = random.Random(DEFAULT_SEED)
 
 	if not base_path.exists():
 		raise FileNotFoundError(f"Datensatz nicht gefunden: {base_path}")
@@ -50,11 +52,11 @@ def main() -> None:
 		for factor in dataset_factors:
 			dataset_name = f"my_small_bib_{factor}x"
 			edge_root = EdgeModelBuilder().from_file(dataset_files[factor])
-			context = select_context_nodes(edge_root, seed=DEFAULT_SEED + factor)
+			context = select_context_nodes(edge_root)
 
 			print()
 			print(f"[DATASET] {dataset_name}: {len(edge_root.walk())} Knoten im EDGE-Baum")
-			print(f"[DATASET] sibling axis roll: {context['sibling_axis_name']}")
+			print("[DATASET] sibling axes: following-sibling, preceding-sibling")
 
 			for approach in approaches:
 				print(f"[SETUP] {approach['name']} auf {dataset_name}")
@@ -83,16 +85,21 @@ def main() -> None:
 					)
 
 				if approach["sibling"] is not None:
-					axis_name = context["sibling_axis_name"]
-					results.append(
-						benchmark_query(
-							dataset_name,
-							approach["name"],
-							axis_name,
-							lambda: approach["sibling"](conn, context["sibling_node_id"], axis_name),
-							DEFAULT_REPEATS,
+					for axis_name in ("following-sibling", "preceding-sibling"):
+						context_key = axis_name.replace("-", "_") + "_node_id"
+						results.append(
+							benchmark_query(
+								dataset_name,
+								approach["name"],
+								axis_name,
+								lambda axis_name=axis_name, context_key=context_key: approach["sibling"](
+									conn,
+									context[context_key],
+									axis_name,
+								),
+								DEFAULT_REPEATS,
+							)
 						)
-					)
 
 	print_results(results)
 	write_charts(results, Path(__file__).with_name("benchmark_charts"))
@@ -144,7 +151,7 @@ def write_scaled_dataset_file(base_path: Path, target_path: Path, factor: int) -
 	ET.ElementTree(scaled_root).write(target_path, encoding="utf-8", xml_declaration=True)
 
 
-def select_context_nodes(root: EdgeNode, seed: int) -> dict[str, int | str]:
+def select_context_nodes(root: EdgeNode) -> dict[str, int]:
 	year_nodes: list[EdgeNode] = []
 	article_nodes: list[EdgeNode] = []
 	publication_nodes: list[EdgeNode] = []
@@ -169,16 +176,23 @@ def select_context_nodes(root: EdgeNode, seed: int) -> dict[str, int | str]:
 	ancestor_node = article_nodes[0] if article_nodes else publication_nodes[0]
 	descendant_node = year_nodes[0]
 
-	rng = random.Random(seed)
-	sibling_axis_name = rng.choice(["following-sibling", "preceding-sibling"])
 	sibling_candidates = article_nodes if article_nodes else publication_nodes
-	sibling_node = pick_sibling_candidate(sibling_candidates, parent_by_id, sibling_axis_name)
+	following_sibling_node = pick_sibling_candidate(
+		sibling_candidates,
+		parent_by_id,
+		"following-sibling",
+	)
+	preceding_sibling_node = pick_sibling_candidate(
+		sibling_candidates,
+		parent_by_id,
+		"preceding-sibling",
+	)
 
 	return {
 		"ancestor_node_id": ancestor_node.id,
 		"descendant_node_id": descendant_node.id,
-		"sibling_node_id": sibling_node.id,
-		"sibling_axis_name": sibling_axis_name,
+		"following_sibling_node_id": following_sibling_node.id,
+		"preceding_sibling_node_id": preceding_sibling_node.id,
 	}
 
 
@@ -197,9 +211,7 @@ def pick_sibling_candidate(
 			return candidate
 		if axis_name == "preceding-sibling" and position > 0:
 			return candidate
-	if not candidates:
-		raise ValueError("Kein Publikationsknoten für Sibling-Benchmark gefunden.")
-	return candidates[0]
+	raise ValueError(f"Kein geeigneter Knoten für die Achse {axis_name} gefunden.")
 
 
 def build_approaches() -> list[dict[str, Any]]:
@@ -399,6 +411,12 @@ def write_charts(rows: list[dict[str, Any]], output_dir: Path) -> None:
 		if not datasets:
 			continue
 
+		# Eindeutiges Lookup: verhindert falsche 0.0-Werte durch Fallback-Logik.
+		row_map = {
+			(str(row["dataset"]), str(row["approach"])): float(row["avg_ms"])
+			for row in axis_rows
+		}
+
 		file_name = f"benchmark_{sanitize_filename(axis_name)}.png"
 		file_path = output_dir / file_name
 
@@ -408,14 +426,7 @@ def write_charts(rows: list[dict[str, Any]], output_dir: Path) -> None:
 
 		for idx, approach in enumerate(approaches):
 			offset = (idx - (len(approaches) - 1) / 2) * bar_width
-			values = []
-			for dataset in datasets:
-				matching = [
-					float(row["avg_ms"])
-					for row in axis_rows
-					if str(row["dataset"]) == dataset and str(row["approach"]) == approach
-				]
-				values.append(matching[0] if matching else 0.0)
+			values = [row_map.get((dataset, approach), float("nan")) for dataset in datasets]
 
 			bar_positions = [x + offset for x in x_positions]
 			bars = ax.bar(
@@ -425,7 +436,18 @@ def write_charts(rows: list[dict[str, Any]], output_dir: Path) -> None:
 				label=approach,
 				color=palette.get(approach, "#777777"),
 			)
-			ax.bar_label(bars, fmt="%.2f", padding=2, fontsize=8)
+
+			for rect, value in zip(bars, values):
+				if math.isnan(value):
+					continue
+				ax.text(
+					rect.get_x() + rect.get_width() / 2,
+					rect.get_height(),
+					f"{value:.3f}",
+					ha="center",
+					va="bottom",
+					fontsize=8,
+				)
 
 		ax.set_title(f"Benchmark {axis_name} (Avg ms)")
 		ax.set_ylabel("Zeit in ms")
